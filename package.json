@@ -1,0 +1,32 @@
+{
+  "name": "airfocus-automation",
+  "version": "0.1.0",
+  "scripts": {
+    "build": "tsc",
+    "build-docker": "docker build -t my-airfocus-automation:latest .",
+    "lint": "prettier . --check && tsc -p ./tsconfig.json --noEmit",
+    "lint-fix": "prettier . --write",
+    "generate-api-client": "swagger-typescript-api -p 'https://developer.airfocus.com/openapi.json' -o ./src/models --name airfocus.ts --axios",
+    "start": "ts-node -T ./index.dev.ts",
+    "test": "vitest"
+  },
+  "license": "ISC",
+  "author": "airfocus GmbH",
+  "dependencies": {
+    "@types/body-parser": "1.19.5",
+    "@types/express": "4.17.21",
+    "axios": "1.7.9",
+    "body-parser": "1.20.3",
+    "dotenv": "16.4.7",
+    "express": "4.21.2"
+  },
+  "devDependencies": {
+    "@ngrok/ngrok": "1.4.1",
+    "dotenv": "^16.4.5",
+    "prettier": "^3.3.0",
+    "swagger-typescript-api": "^13.0.23",
+    "ts-node": "^10.9.2",
+    "typescript": "5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
