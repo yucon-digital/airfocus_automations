@@ -27,7 +27,7 @@ export class Server {
       });
     });
 
-    handlers.forEach((handler) => {
+    for (const handler of handlers) {
       const handlerId = handler.getId();
       const workspaceId = handler.getWorkspaceId();
 
@@ -37,6 +37,7 @@ export class Server {
         localWebhookUrl,
         bodyParser.json({ limit: "1mb" }),
         async (req, res, next) => {
+          console.log(`${new Date().toISOString()} - Received event`);
           if (!req.headers.authorization) {
             return res.status(401).json({ error: "Missing authorization" });
           }
@@ -54,7 +55,7 @@ export class Server {
           }
         },
       );
-    });
+    }
 
     this.app.use(
       (
@@ -62,7 +63,6 @@ export class Server {
         res: express.Response,
         next: express.NextFunction,
       ) => {
-        console.log(`Not found: ${req.url}`);
         return res.status(404).json({
           error: "Not found",
         });

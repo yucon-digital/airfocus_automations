@@ -1,9 +1,9 @@
 import { Server } from "./server/server";
 import { signals } from "./utils/signals";
-import { createConfig } from "./utils/createConfig";
+import { createConfig } from "./config/createConfig";
 import { AirFocusApiClient } from "./apiClient/airfocusApiClient";
 import { createWebhookHandlers } from "./webhook/createWebhookHandlers";
-import { handlerConfig } from "./utils/handlerConfig";
+import { handlerConfig } from "./config/handlerConfig";
 
 async function run() {
   const config = createConfig();

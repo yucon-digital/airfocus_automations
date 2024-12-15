@@ -2,14 +2,17 @@ import { ItemWithItemEmbed, Status } from "../models/airfocus";
 import { BaseHandler } from "../models/handler";
 import { AirFocusApiClient } from "../apiClient/airfocusApiClient";
 import { WebhookEvent } from "../models/webhook";
+import { getInsightsFromItem } from "../utils/insightsFromItem";
 
 export interface AutoUpdateFeedbackStatusHandlerProps {
   feedbackStatusMapping: {
     new: string;
     accepted: string;
-    inProgress: string;
+    exploration: string;
+    progress: string;
     completed: string;
   };
+  feedbackInitiativeLinkingType: "parent" | "insight";
 }
 
 export class AutoUpdateFeedbackStatusHandler extends BaseHandler {
@@ -22,11 +25,29 @@ export class AutoUpdateFeedbackStatusHandler extends BaseHandler {
   }
 
   public async getSubscribedWebhookEvents(): Promise<WebhookEvent[]> {
-    return [
+    const workspace = await this.airFocusApiClient.getWorkspace(
+      this.getWorkspaceId(),
+    );
+
+    const webhookEvents: WebhookEvent[] = [
       { type: "itemCreated" },
       { type: "itemStatusUpdated" },
       { type: "itemRelationChanged" },
     ];
+
+    if (this.props.feedbackInitiativeLinkingType === "insight") {
+      for (const fieldId of Object.keys(workspace._embedded.fields)) {
+        const field = workspace._embedded.fields[fieldId];
+
+        if (field.typeId !== "insights") {
+          continue;
+        }
+
+        webhookEvents.push({ type: "itemFieldUpdated", fieldId: fieldId });
+      }
+    }
+
+    return webhookEvents;
   }
 
   public handle = async (event: any) => {
@@ -65,15 +86,29 @@ export class AutoUpdateFeedbackStatusHandler extends BaseHandler {
   };
 
   async handleInitiativeUpdated(item: ItemWithItemEmbed): Promise<void> {
-    await Promise.all(
-      (item._embedded.parents || []).map(async (child) => {
-        const feedback = await this.airFocusApiClient.getItem(
-          child.workspaceId,
-          child.itemId,
-        );
-        await this.updateFeedback(feedback);
-      }),
-    );
+    if (this.props.feedbackInitiativeLinkingType === "parent") {
+      await Promise.all(
+        (item._embedded.parents || []).map(async (child) => {
+          const feedback = await this.airFocusApiClient.getItem(
+            child.workspaceId,
+            child.itemId,
+          );
+          await this.updateFeedback(feedback);
+        }),
+      );
+    } else {
+      const insights = getInsightsFromItem(item);
+
+      await Promise.all(
+        insights.map(async (insight) => {
+          const feedback = await this.airFocusApiClient.getItem(
+            insight.workspaceId,
+            insight.itemId,
+          );
+          await this.updateFeedback(feedback);
+        }),
+      );
+    }
   }
 
   async handleEpicUpdated(item: ItemWithItemEmbed): Promise<void> {
@@ -92,25 +127,49 @@ export class AutoUpdateFeedbackStatusHandler extends BaseHandler {
     const workspace = await this.airFocusApiClient.getWorkspace(
       item.workspaceId,
     );
-    const initiativesWithStatuses = await Promise.all(
-      (item._embedded.children || []).map(async (initiative) => {
-        const [item, workspace] = await Promise.all([
-          this.airFocusApiClient.getItem(
-            initiative.workspaceId,
-            initiative.itemId,
-          ),
-          this.airFocusApiClient.getWorkspace(initiative.workspaceId),
-        ]);
-        return {
-          initiative: item,
-          statuses: workspace._embedded.statuses,
-        };
-      }),
-    );
+
+    let initiativesWithStatuses: {
+      initiative: ItemWithItemEmbed;
+      statuses: Record<string, Status>;
+    }[];
+
+    if (this.props.feedbackInitiativeLinkingType === "parent") {
+      initiativesWithStatuses = await Promise.all(
+        (item._embedded.children || []).map(async (initiative) => {
+          const [item, workspace] = await Promise.all([
+            this.airFocusApiClient.getItem(
+              initiative.workspaceId,
+              initiative.itemId,
+            ),
+            this.airFocusApiClient.getWorkspace(initiative.workspaceId),
+          ]);
+          return {
+            initiative: item,
+            statuses: workspace._embedded.statuses,
+          };
+        }),
+      );
+    } else {
+      const insights = getInsightsFromItem(item);
+      initiativesWithStatuses = await Promise.all(
+        insights.map(async (insight) => {
+          const [item, workspace] = await Promise.all([
+            this.airFocusApiClient.getItem(insight.workspaceId, insight.itemId),
+            this.airFocusApiClient.getWorkspace(insight.workspaceId),
+          ]);
+          return {
+            initiative: item,
+            statuses: workspace._embedded.statuses,
+          };
+        }),
+      );
+    }
+
     const feedbackStatus = this.getFeedbackStatusFromInitiatives(
       initiativesWithStatuses,
       workspace._embedded.statuses,
     );
+
     await this.airFocusApiClient.updateItem({
       ...item,
       statusId: feedbackStatus.id,
@@ -222,6 +281,7 @@ export class AutoUpdateFeedbackStatusHandler extends BaseHandler {
       )!;
     }
 
+    // if all initiatives are closed
     if (
       initiativesWithStatus.every((initiativeWithStatus) => {
         const status =
@@ -238,19 +298,46 @@ export class AutoUpdateFeedbackStatusHandler extends BaseHandler {
       )!;
     }
 
+    /*
+ 'Backlog Exploration': 0
+ 'In Exploration': 1
+'Backlog Delivery': 2
+'In Development': 3,
+'Done': 5
+
+  */
+
+    // if all initiatives are at least in progress Backlog Delivery
     if (
-      initiativesWithStatus.every((initiativeWithStatus) => {
+      initiativesWithStatus.some((initiativeWithStatus) => {
         const status =
           initiativeWithStatus.statuses[
             initiativeWithStatus.initiative.statusId
           ];
-        return status.category === "active" || status.category === "closed";
+        return status.order >= 2;
       })
     ) {
       return Object.values(feedbackWorkspaceStatuses).find(
         (status) =>
           feedbackWorkspaceStatuses[status.id].name ===
-          this.props.feedbackStatusMapping.inProgress,
+          this.props.feedbackStatusMapping.progress,
+      )!;
+    }
+
+    // if all initiatives are at least in exploration status
+    if (
+      initiativesWithStatus.some((initiativeWithStatus) => {
+        const status =
+          initiativeWithStatus.statuses[
+            initiativeWithStatus.initiative.statusId
+          ];
+        return status.order >= 1;
+      })
+    ) {
+      return Object.values(feedbackWorkspaceStatuses).find(
+        (status) =>
+          feedbackWorkspaceStatuses[status.id].name ===
+          this.props.feedbackStatusMapping.exploration,
       )!;
     }
 

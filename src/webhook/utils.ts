@@ -12,5 +12,5 @@ export function getLocalWebhookUrl(
   handlerId: string,
   workspaceId: string,
 ): string {
-  return `/hooks/${handlerId}/workspace/${workspaceId}`;
+  return `/automations/${handlerId}/workspace/${workspaceId}`;
 }

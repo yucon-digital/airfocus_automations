@@ -1,7 +1,8 @@
 export type WebhookEvent =
   | WebhookEventItemCreated
   | WebhookEventItemStatusUpdated
-  | WebhookEventItemRelationChanged;
+  | WebhookEventItemRelationChanged
+  | WebhookEventItemFieldUpdated;
 
 export interface WebhookEventItemCreated {
   type: "itemCreated";
@@ -13,4 +14,9 @@ export interface WebhookEventItemStatusUpdated {
 
 export interface WebhookEventItemRelationChanged {
   type: "itemRelationChanged";
+}
+
+export interface WebhookEventItemFieldUpdated {
+  type: "itemFieldUpdated";
+  fieldId: string;
 }
