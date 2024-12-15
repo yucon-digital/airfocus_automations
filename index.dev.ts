@@ -9,7 +9,7 @@ import { createWebhookHandlers } from "./src/webhook/createWebhookHandlers";
 import { handlerConfig } from "./src/config/handlerConfig";
 
 async function run() {
-  const port = 3000;
+  const port = (process.env.PORT || 3000) as number;
   const ngrokListener = await ngrok.forward({
     addr: port,
     authtoken: readString("NGROK_AUTHTOKEN"),
