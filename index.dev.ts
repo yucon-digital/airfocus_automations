@@ -29,7 +29,7 @@ async function run() {
 
   const client = new AirFocusApiClient(config);
   const handlers = await createWebhookHandlers(config, client, handlerConfig);
-  const server = new Server(port, "localhost", config, handlers);
+  const server = new Server(port, "127.0.0.1", config, handlers);
   await server.run();
   await signals(["SIGTERM", "SIGINT"]);
   await server.close();
